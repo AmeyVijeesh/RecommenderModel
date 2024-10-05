@@ -21,6 +21,10 @@ def load_data(user_location):
     # Filter dataset based on user location to minimize memory usage
     return df[df['location'] == user_location]
 
+@app.route('/')
+def home():
+    return jsonify({"message": "Welcome to the Restaurant Recommender API!"})
+
 @app.route('/recommend', methods=['POST', 'OPTIONS'])  # Handle POST and OPTIONS for preflight
 def recommend_restaurants():
     if request.method == 'OPTIONS':
