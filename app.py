@@ -15,17 +15,18 @@ encoder = joblib.load('onehot_encoder.pkl')
 
 # Load only relevant columns and downcast types to save memory
 def load_data(user_location):
-    df = pd.read_csv('cleaned_data.csv', usecols=['location', 'rest_type', 'cuisines', 'listed_in(type)', 'cost', 'rate', 'votes', 'book_table', 'online_order'],
-                     dtype={'location': 'category', 'rest_type': 'category', 'cuisines': 'category', 'listed_in(type)': 'category',
+    df = pd.read_csv('cleaned_data.csv',
+                     usecols=['location', 'rest_type', 'cuisines', 'listed_in(type)', 'cost', 'rate', 'votes', 'name'],
+                     dtype={'location': 'category', 'rest_type': 'category', 'cuisines': 'category',
+                            'listed_in(type)': 'category',
                             'cost': 'float32', 'rate': 'float32', 'votes': 'int32'})
-    # Filter dataset based on user location to minimize memory usage
     return df[df['location'] == user_location]
 
 @app.route('/')
 def home():
     return jsonify({"message": "Welcome to the Restaurant Recommender API!"})
 
-@app.route('/recommend', methods=['POST', 'OPTIONS'])  # Handle POST and OPTIONS for preflight
+@app.route('/recommend', methods=['POST', 'OPTIONS'])
 def recommend_restaurants():
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'OK'})
@@ -35,57 +36,36 @@ def recommend_restaurants():
         return response
 
     input_data = request.json
-    page = input_data.get('page', 1)
-    results_per_page = 4
 
+    # Get the required inputs
     user_location = input_data.get('location', '')
     user_cost = input_data.get('cost', 0)
     user_cuisines = input_data.get('cuisines', '')
     user_dining_type = input_data.get('listed_in(type)', '')
 
-    input_df = pd.DataFrame([input_data])
-
-    required_columns = ['location', 'rest_type', 'cuisines', 'listed_in(type)']
-    for column in required_columns:
-        if column not in input_df.columns:
-            input_df[column] = ''
-
-    input_encoded = encoder.transform(input_df[['location', 'rest_type', 'cuisines', 'listed_in(type)']])
-    input_encoded_df = pd.DataFrame(input_encoded, columns=encoder.get_feature_names_out())
-    input_encoded_df = input_encoded_df.reindex(columns=encoder.get_feature_names_out(), fill_value=0)
-
-    processed_input_df = pd.concat([input_encoded_df, input_df[['cost']].reset_index(drop=True)], axis=1)
-
     # Load dataset for the specified user location
     filtered_df = load_data(user_location)
 
-    # Filter out rows with 0 votes
-    filtered_df = filtered_df[filtered_df['votes'] > 0]
+    # Filter out rows with 0 votes and cost above user_cost
+    filtered_df = filtered_df[(filtered_df['votes'] > 0) & (filtered_df['cost'] <= user_cost)]
 
-    try:
-        df_final_reindexed = filtered_df.reindex(columns=processed_input_df.columns, fill_value=0)
-        similarities = cosine_similarity(processed_input_df, df_final_reindexed)
-        top_indices = similarities[0].argsort()[::-1]
+    # Filter further by cuisines and dining type if provided
+    if user_cuisines:
+        filtered_df = filtered_df[filtered_df['cuisines'].str.contains(user_cuisines, case=False)]
+    if user_dining_type:
+        filtered_df = filtered_df[filtered_df['listed_in(type)'].str.contains(user_dining_type, case=False)]
 
-        start_index = (page - 1) * results_per_page
-        end_index = start_index + results_per_page
-        top_indices_page = top_indices[start_index:end_index]
+    # Check if there are any recommended restaurants
+    if filtered_df.empty:
+        return jsonify({'message': 'No restaurants found matching your criteria.'}), 404
 
-        recommended_restaurants = filtered_df.iloc[top_indices_page].drop_duplicates(subset='name')[
-            ['name', 'location', 'cost', 'rate', 'cuisines', 'votes', 'book_table', 'online_order', 'listed_in(type)']]
+    # Return relevant restaurant details
+    recommended_restaurants = filtered_df[['name', 'location', 'cost', 'rate', 'cuisines', 'votes', 'listed_in(type)']]
+    response = jsonify(recommended_restaurants.to_dict(orient='records'))
+    response.headers.add('Access-Control-Allow-Origin', '*')
 
-        # Sort by 'votes' in descending order
-        recommended_restaurants = recommended_restaurants.sort_values(by='votes', ascending=False)
-
-        response = jsonify(recommended_restaurants.to_dict(orient='records'))
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        print(input_data)
-        return response
-
-    except ValueError:
-        return jsonify({'error': "This ain't working dude"}), 400
-
+    return response
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 5500))
     app.run(host='0.0.0.0', port=port, debug=True)
