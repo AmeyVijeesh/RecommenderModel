@@ -3,16 +3,18 @@ from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
 import joblib
 from flask_cors import CORS
+import os
 
 app = Flask(__name__)
 
 # Allow CORS for all routes
 CORS(app)
 
+# Load your dataset and the encoder
 df = pd.read_csv('cleaned_data.csv')
 encoder = joblib.load('onehot_encoder.pkl')
 
-# Preprocess data
+# Preprocess the data
 df_encoded = encoder.transform(df[['location', 'rest_type', 'cuisines', 'listed_in(type)']])
 df_encoded = pd.DataFrame(df_encoded, columns=encoder.get_feature_names_out())
 df_final = pd.concat([df_encoded, df[['cost', 'rate', 'votes', 'book_table', 'online_order']]], axis=1)
@@ -80,4 +82,6 @@ def recommend_restaurants():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Use the PORT environment variable on Render, default to 5000 if running locally
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
