@@ -10,9 +10,11 @@ CORS(app)
 
 encoder = joblib.load('onehot_encoder.pkl')
 
+
 def load_data(user_location):
     df = pd.read_csv('cleaned_data.csv',
-                     usecols=['location', 'rest_type', 'cuisines', 'listed_in(type)', 'cost', 'rate', 'votes', 'name', 'online_order', 'book_table'],
+                     usecols=['location', 'rest_type', 'cuisines', 'listed_in(type)', 'cost', 'rate', 'votes', 'name',
+                              'online_order', 'book_table'],
                      dtype={'location': 'category', 'rest_type': 'category', 'cuisines': 'category',
                             'listed_in(type)': 'category',
                             'cost': 'float32', 'rate': 'float32', 'votes': 'int32',
@@ -23,6 +25,7 @@ def load_data(user_location):
 @app.route('/')
 def home():
     return jsonify({"message": "Welcome to the Restaurant Recommender API!"})
+
 
 @app.route('/recommend', methods=['POST', 'OPTIONS'])
 def recommend_restaurants():
@@ -52,11 +55,17 @@ def recommend_restaurants():
     if filtered_df.empty:
         return jsonify({'message': 'No restaurants found matching your criteria.'}), 404
 
-    recommended_restaurants = filtered_df[['name', 'location', 'cost', 'rate', 'cuisines', 'votes', 'listed_in(type)', 'online_order', 'book_table']]
+    # Round the 'rate' column to 2 decimal places
+    filtered_df['rate'] = filtered_df['rate'].round(2)
+
+    recommended_restaurants = filtered_df[
+        ['name', 'location', 'cost', 'rate', 'cuisines', 'votes', 'listed_in(type)', 'online_order', 'book_table']]
     response = jsonify(recommended_restaurants.to_dict(orient='records'))
     response.headers.add('Access-Control-Allow-Origin', '*')
 
     return response
+
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5500))
